@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # this module is part of undetected_chromedriver
 
-from distutils.version import LooseVersion
 import io
 import json
 import logging
@@ -172,13 +171,9 @@ class Patcher(object):
         except FileNotFoundError:
             pass
 
-        release = self.fetch_release_number()
-        self.version_main = release.version[0]
-        self.version_full = release
-        self.unzip_package(self.fetch_package())
         return self.patch()
 
-    def driver_binary_in_use(self, path: str = None) -> bool:
+    def driver_binary_in_use(self, path = None):
         """
         naive test to check if a found chromedriver binary is
         currently in use
@@ -229,62 +224,6 @@ class Patcher(object):
         self.patch_exe()
         return self.is_binary_patched()
 
-    def fetch_release_number(self):
-        """
-        Gets the latest major version available, or the latest major version of self.target_version if set explicitly.
-        :return: version string
-        :rtype: LooseVersion
-        """
-        # Endpoint for old versions of Chromedriver (114 and below)
-        if self.is_old_chromedriver:
-            path = f"/latest_release_{self.version_main}"
-            path = path.upper()
-            logger.debug("getting release number from %s" % path)
-            return LooseVersion(urlopen(self.url_repo + path).read().decode())
-
-        # Endpoint for new versions of Chromedriver (115+)
-        if not self.version_main:
-            # Fetch the latest version
-            path = "/last-known-good-versions-with-downloads.json"
-            logger.debug("getting release number from %s" % path)
-            with urlopen(self.url_repo + path) as conn:
-                response = conn.read().decode()
-
-            last_versions = json.loads(response)
-            return LooseVersion(last_versions["channels"]["Stable"]["version"])
-
-        # Fetch the latest minor version of the major version provided
-        path = "/latest-versions-per-milestone-with-downloads.json"
-        logger.debug("getting release number from %s" % path)
-        with urlopen(self.url_repo + path) as conn:
-            response = conn.read().decode()
-
-        major_versions = json.loads(response)
-        return LooseVersion(major_versions["milestones"][str(self.version_main)]["version"])
-
-    def parse_exe_version(self):
-        with io.open(self.executable_path, "rb") as f:
-            for line in iter(lambda: f.readline(), b""):
-                match = re.search(rb"platform_handle\x00content\x00([0-9.]*)", line)
-                if match:
-                    return LooseVersion(match[1].decode())
-
-    def fetch_package(self):
-        """
-        Downloads ChromeDriver from source
-
-        :return: path to downloaded file
-        """
-        zip_name = f"chromedriver_{self.platform_name}.zip"
-        if self.is_old_chromedriver:
-            download_url = "%s/%s/%s" % (self.url_repo, self.version_full.vstring, zip_name)
-        else:
-            zip_name = zip_name.replace("_", "-", 1)
-            download_url = "https://storage.googleapis.com/chrome-for-testing-public/%s/%s/%s"
-            download_url %= (self.version_full.vstring, self.platform_name, zip_name)
-
-        logger.debug("downloading from %s" % download_url)
-        return urlretrieve(download_url)[0]
 
     def unzip_package(self, fp):
         """
@@ -397,5 +336,3 @@ class Patcher(object):
                 except (OSError, RuntimeError, PermissionError):
                     time.sleep(0.01)
                     continue
-                except FileNotFoundError:
-                    break
